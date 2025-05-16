@@ -93,8 +93,10 @@ if menu == "1. Data Wrangling & Exploration":
         import matplotlib.pyplot as plt
         import seaborn as sns
         fig, ax = plt.subplots()
-        sns.heatmap(df.corr(), annot=True, ax=ax)
+        numeric_df = df.select_dtypes(include=np.number)  # <-- select numeric columns only
+        sns.heatmap(numeric_df.corr(), annot=True, ax=ax)
         st.pyplot(fig)
+
 
 # Task 2: Supervised ML - Linear Regression for income prediction
 elif menu == "2. Income Prediction (Regression)":
@@ -104,14 +106,23 @@ elif menu == "2. Income Prediction (Regression)":
 
     # Feature selection (example)
     features = st.multiselect("Select features for model:", df.columns.tolist(), default=["Age", "YearsAtCompany"])
-    target = "Income"
+    target = "MonthlyIncome"
 
     if st.button("Train Model"):
         if len(features) == 0:
             st.error("Please select at least one feature")
         else:
-            X = df[features]
-            y = df[target]
+            
+        # Ensure features are numeric
+            X = df[features].select_dtypes(include=np.number)
+
+            # Convert target to numeric, coerce errors to NaN then drop those rows
+            y = pd.to_numeric(df[target], errors='coerce')
+
+            # Drop rows with NaN in features or target
+            valid_idx = X.notnull().all(axis=1) & y.notnull()
+            X = X[valid_idx]
+            y = y[valid_idx]
 
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -154,12 +165,19 @@ elif menu == "3. Attrition Prediction (Classification)":
         if len(features) == 0:
             st.error("Select at least one feature")
         else:
-            X = df[features]
+            # Filter numeric features only (or implement encoding if you want to support categorical)
+            X = df[features].select_dtypes(include=np.number)
+
             y = df[target]
 
             # Encode target if needed
             if y.dtype == 'object':
                 y = y.map({'Yes': 1, 'No': 0})
+
+            # Drop rows with missing values
+            valid_idx = X.notnull().all(axis=1) & y.notnull()
+            X = X[valid_idx]
+            y = y[valid_idx]
 
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -195,13 +213,13 @@ elif menu == "4. Employee Segmentation (Clustering)":
     st.header("Employee Segmentation using Clustering")
 
     df = load_data()
-    features = st.multiselect("Select features for clustering:", df.select_dtypes(include=np.number).columns.tolist(), default=["Age", "Income", "YearsAtCompany"])
+    features = st.multiselect("Select features for clustering:", df.select_dtypes(include=np.number).columns.tolist(), default=["Age", "MonthlyIncome", "YearsAtCompany"])
 
     if st.button("Run Clustering"):
         if len(features) == 0:
             st.error("Select at least one feature")
         else:
-            X = df[features]
+            X = df[features].dropna()
 
             max_clusters = st.slider("Max number of clusters to test", 2, 10, 5)
             silhouette_scores = []
@@ -245,6 +263,7 @@ elif menu == "5. Model Application":
             input_data[f] = val
         if st.button("Predict Income"):
             input_df = pd.DataFrame([input_data])
+            input_df = input_df.astype(float)  # Cast inputs to float, or use int as needed
             pred = model.predict(input_df)[0]
             st.write(f"Predicted Income: ${pred:,.2f}")
 
@@ -264,7 +283,7 @@ elif menu == "5. Model Application":
     elif model_choice == "Employee Segmentation":
         model = load_model("KMeans_model.pkl")
         st.write("Input features for clustering:")
-        features = ["Age", "Income", "YearsAtCompany"]
+        features = ["Age", "MonthlyIncome", "YearsAtCompany"]
         input_data = {}
         for f in features:
             val = st.number_input(f"Input {f}", value=40.0)
